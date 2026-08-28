@@ -28,21 +28,20 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: x86_64-pc-windows-msvc
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+          rustup target add x86_64-pc-windows-msvc
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 12.0.0
-          run_install: false
+        shell: pwsh
+        run: corepack install --global pnpm@12.0.0
 
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24.19.0"
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
