@@ -456,22 +456,37 @@ pub fn run() -> std::process::ExitCode {
                 event_handlers::handle_reopen(has_visible_windows).await;
             });
         }
-        tauri::RunEvent::Exit => AsyncHandler::block_on(async {
-            // Windows session ending currently reaches Tao as WM_ENDSESSION and
-            // destroys the loop without a preventable ExitRequested event.
+        tauri::RunEvent::Exit => {
+            // Windows session ending reaches Tao as WM_ENDSESSION and destroys
+            // the event loop without a preventable ExitRequested event. Do not
+            // wait for Service IPC here: Windows is already tearing the session
+            // down, and a service/pipe request can wait indefinitely at this
+            // point, blocking the process that Windows is waiting to terminate.
+            #[cfg(target_os = "windows")]
             if !handle::Handle::global().is_exiting() {
                 handle::Handle::global().set_is_exiting();
-                let cleanup_result = feat::clean_session_ending_best_effort().await;
+                logging!(
+                    warn,
+                    Type::System,
+                    "Windows session ending detected; skipping asynchronous core cleanup so shutdown can continue"
+                );
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            if !handle::Handle::global().is_exiting() {
+                handle::Handle::global().set_is_exiting();
+                let cleanup_result = AsyncHandler::block_on(feat::clean_session_ending_best_effort());
                 logging!(
                     info,
                     Type::System,
-                    "Unpreventable session-ending best-effort cleanup returned - core stopped: {}, all cleanup successful: {}",
+                    "Session-ending best-effort cleanup returned - core stopped: {}, all cleanup successful: {}",
                     cleanup_result.core_stopped,
                     cleanup_result.all_success
                 );
             }
+
             logging!(info, Type::System, "Application exited");
-        }),
+        }
         #[allow(unused_variables)]
         tauri::RunEvent::ExitRequested { api, code, .. } => {
             if module::lightweight::is_in_lightweight_mode() && !handle::Handle::global().is_exiting() {
